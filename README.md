@@ -1,4 +1,4 @@
-# TreeRank
+# ZSet
 This Go package provides an implementation of sorted set in redis.
 
 ## Usage
