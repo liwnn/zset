@@ -3,6 +3,7 @@ package zset
 import (
 	"math/rand"
 	"strconv"
+	"time"
 )
 
 const (
@@ -80,6 +81,7 @@ type SkipList struct {
 	level        int // current level count
 	maxLevel     int
 	freelist     *FreeList
+	random       *rand.Rand
 }
 
 // newSkipList creates a skip list
@@ -94,6 +96,7 @@ func newSkipList(maxLevel int) *SkipList {
 		},
 		maxLevel: maxLevel,
 		freelist: NewFreeList(DefaultFreeListSize),
+		random:   rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -211,7 +214,7 @@ func (sl *SkipList) GetRank(item Item) int {
 
 func (list *SkipList) randomLevel() int {
 	lvl := 1
-	for lvl < DefaultMaxLevel && rand.Float64() < DefaultP {
+	for lvl < list.maxLevel && float32(list.random.Uint32()&0xFFFF) < DefaultP*0xFFFF {
 		lvl++
 	}
 	return lvl
@@ -249,12 +252,11 @@ func New() *ZSet {
 
 // Add a new element or update the score of an existing element
 func (zs *ZSet) Add(item Item) {
-	if node := zs.dict[item.Key()]; node != nil {
+	key := item.Key()
+	if node := zs.dict[key]; node != nil {
 		zs.sl.delete(node)
 	}
-
-	n := zs.sl.insert(item)
-	zs.dict[item.Key()] = n
+	zs.dict[key] = zs.sl.insert(item)
 }
 
 // Delete the element 'ele' from the sorted set,
