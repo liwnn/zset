@@ -8,7 +8,7 @@ import (
 
 const (
 	DefaultMaxLevel = 32   // (1/p)^MaxLevel >= maxNode
-	DefaultP        = 0.25 // Skiplist P = 1/4
+	DefaultP        = 0.25 // SkipList P = 1/4
 
 	DefaultFreeListSize = 32
 )
@@ -194,7 +194,7 @@ func (sl *SkipList) delete(n *node) *node {
 	return nil
 }
 
-// Find the rank for an element.
+// GetRank find the rank for an element.
 // Returns 0 when the element cannot be found, rank otherwise.
 // Note that the rank is 1-based
 func (sl *SkipList) GetRank(item Item) int {
@@ -212,19 +212,19 @@ func (sl *SkipList) GetRank(item Item) int {
 	return 0
 }
 
-func (list *SkipList) randomLevel() int {
+func (sl *SkipList) randomLevel() int {
 	lvl := 1
-	for lvl < list.maxLevel && float32(list.random.Uint32()&0xFFFF) < DefaultP*0xFFFF {
+	for lvl < sl.maxLevel && float32(sl.random.Uint32()&0xFFFF) < DefaultP*0xFFFF {
 		lvl++
 	}
 	return lvl
 }
 
 // Finds an element by its rank. The rank argument needs to be 1-based.
-func (list *SkipList) getElementByRank(rank int) *node {
+func (sl *SkipList) getElementByRank(rank int) *node {
 	var traversed int
-	x := list.header
-	for i := list.level - 1; i >= 0; i-- {
+	x := sl.header
+	for i := sl.level - 1; i >= 0; i-- {
 		for x.level[i].forward != nil && traversed+x.level[i].span <= rank {
 			traversed += x.level[i].span
 			x = x.level[i].forward
