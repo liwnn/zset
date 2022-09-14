@@ -63,3 +63,14 @@ func TestZSetRank(t *testing.T) {
 		}
 	}
 }
+
+const benchmarkListSize = 10000
+
+func BenchmarkAdd(b *testing.B) {
+	zs := New()
+	items := perm(benchmarkListSize)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		zs.Add(items[i%benchmarkListSize])
+	}
+}

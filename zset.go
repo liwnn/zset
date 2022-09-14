@@ -102,8 +102,7 @@ func newSkipList(maxLevel int) *SkipList {
 
 // insert element
 func (sl *SkipList) insert(item Item) *node {
-	var preAlloc [DefaultMaxLevel]*node // [0...list.maxLevel)
-	update := preAlloc[:sl.maxLevel]
+	var update [DefaultMaxLevel]*node // [0...list.maxLevel)
 	var rank [DefaultMaxLevel]int
 	x := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
@@ -112,10 +111,9 @@ func (sl *SkipList) insert(item Item) *node {
 		} else {
 			rank[i] = rank[i+1]
 		}
-		for x.level[i].forward != nil &&
-			x.level[i].forward.item.Less(item) {
+		for y := x.level[i].forward; y != nil && y.item.Less(item); y = x.level[i].forward {
 			rank[i] += x.level[i].span
-			x = x.level[i].forward
+			x = y
 		}
 		update[i] = x
 	}
