@@ -16,10 +16,6 @@ type User struct {
 	Score int
 }
 
-func (u User) Key() string {
-	return u.Name
-}
-
 func (u User) Less(than zset.Item) bool {
 	if u.Score == than.(User).Score {
 		return u.Name < than.(User).Name
@@ -31,9 +27,9 @@ func main() {
 	tr := zset.New()
 
 	// Add
-	tr.Add(User{Name: "Hurst", Score: 88})
-	tr.Add(User{Name: "Peek", Score: 100})
-	tr.Add(User{Name: "Beaty", Score: 66})
+	tr.Add("Hurst", User{Name: "Hurst", Score: 88})
+	tr.Add("Peek", User{Name: "Peek", Score: 100})
+	tr.Add("Beaty", User{Name: "Beaty", Score: 66})
 
 	// Rank
 	rank := tr.Rank("Hurst", true)
@@ -52,7 +48,6 @@ func main() {
 	rank = tr.Rank("Hurst", true)
 	fmt.Printf("Hurst's rank is %v\n", rank) // expected 1
 }
-
 ```
 Output:
 ```

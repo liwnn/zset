@@ -3,7 +3,6 @@ package zset
 
 import (
 	"math/rand"
-	"strconv"
 	"time"
 )
 
@@ -19,7 +18,6 @@ var nilNodes = make([]skipListLevel, 16)
 // Item represents a single object in the set.
 type Item interface {
 	Less(Item) bool
-	Key() string
 }
 
 type skipListLevel struct {
@@ -78,8 +76,8 @@ func (f *FreeList) freeNode(n *node) (out bool) {
 	return
 }
 
-// SkipList represents a skip list
-type SkipList struct {
+// skipList represents a skip list
+type skipList struct {
 	header, tail *node
 	length       int
 	level        int // current level count
@@ -89,11 +87,11 @@ type SkipList struct {
 }
 
 // newSkipList creates a skip list
-func newSkipList(maxLevel int) *SkipList {
+func newSkipList(maxLevel int) *skipList {
 	if maxLevel < DefaultMaxLevel {
 		panic("maxLevel must < 32")
 	}
-	return &SkipList{
+	return &skipList{
 		level: 1,
 		header: &node{
 			level: make([]skipListLevel, maxLevel),
@@ -105,7 +103,7 @@ func newSkipList(maxLevel int) *SkipList {
 }
 
 // insert an item into the SkipList.
-func (sl *SkipList) insert(item Item) *node {
+func (sl *skipList) insert(item Item) *node {
 	var update [DefaultMaxLevel]*node // [0...list.maxLevel)
 	var rank [DefaultMaxLevel]int
 	x := sl.header
@@ -162,7 +160,7 @@ func (sl *SkipList) insert(item Item) *node {
 }
 
 // delete element
-func (sl *SkipList) delete(n *node) *node {
+func (sl *skipList) delete(n *node) *node {
 	var preAlloc [DefaultMaxLevel]*node // [0...list.maxLevel)
 	update := preAlloc[:sl.maxLevel]
 	x := sl.header
@@ -199,7 +197,7 @@ func (sl *SkipList) delete(n *node) *node {
 // GetRank find the rank for an element.
 // Returns 0 when the element cannot be found, rank otherwise.
 // Note that the rank is 1-based
-func (sl *SkipList) GetRank(item Item) int {
+func (sl *skipList) GetRank(item Item) int {
 	var rank int
 	x := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
@@ -214,7 +212,7 @@ func (sl *SkipList) GetRank(item Item) int {
 	return 0
 }
 
-func (sl *SkipList) randomLevel() int {
+func (sl *skipList) randomLevel() int {
 	lvl := 1
 	for lvl < sl.maxLevel && float32(sl.random.Uint32()&0xFFFF) < DefaultP*0xFFFF {
 		lvl++
@@ -223,7 +221,7 @@ func (sl *SkipList) randomLevel() int {
 }
 
 // Finds an element by its rank. The rank argument needs to be 1-based.
-func (sl *SkipList) getElementByRank(rank int) *node {
+func (sl *skipList) getElementByRank(rank int) *node {
 	var traversed int
 	x := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
@@ -241,7 +239,7 @@ func (sl *SkipList) getElementByRank(rank int) *node {
 // ZSet set
 type ZSet struct {
 	dict map[string]*node
-	sl   *SkipList
+	sl   *skipList
 }
 
 // New creates a new ZSet.
@@ -253,8 +251,7 @@ func New() *ZSet {
 }
 
 // Add a new element or update the score of an existing element
-func (zs *ZSet) Add(item Item) {
-	key := item.Key()
+func (zs *ZSet) Add(key string, item Item) {
 	if node := zs.dict[key]; node != nil {
 		zs.sl.delete(node)
 	}
@@ -334,10 +331,6 @@ func (zs *ZSet) Length() int {
 }
 
 type Int int
-
-func (a Int) Key() string {
-	return strconv.Itoa(int(a))
-}
 
 func (a Int) Less(b Item) bool {
 	return a < b.(Int)

@@ -3,9 +3,14 @@ package zset
 import (
 	"math/rand"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
+
+func (a Int) Key() string {
+	return strconv.Itoa(int(a))
+}
 
 func init() {
 	seed := time.Now().Unix()
@@ -34,7 +39,7 @@ func TestZSetRank(t *testing.T) {
 	zs := New()
 	for i := 0; i < 10; i++ {
 		for _, v := range perm(listSize) {
-			zs.Add(v)
+			zs.Add(v.Key(), v)
 		}
 		for _, v := range perm(listSize) {
 			if zs.Rank(v.Key(), false) != int(v)+1 {
@@ -71,6 +76,7 @@ func BenchmarkAdd(b *testing.B) {
 	items := perm(benchmarkListSize)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		zs.Add(items[i%benchmarkListSize])
+		item := items[i%benchmarkListSize]
+		zs.Add(item.Key(), item)
 	}
 }
