@@ -53,7 +53,6 @@ func main() {
 	fmt.Printf("Hurst's rank is %v\n", rank) // expected 1
 }
 
-
 ```
 Output:
 ```

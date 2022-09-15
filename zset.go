@@ -1,3 +1,4 @@
+// Package zset implements sorted set similar to redis zset.
 package zset
 
 import (
@@ -15,6 +16,7 @@ const (
 
 var nilNodes = make([]skipListLevel, 16)
 
+// Item represents a single object in the set.
 type Item interface {
 	Less(Item) bool
 	Key() string
@@ -32,10 +34,12 @@ type node struct {
 	level    []skipListLevel
 }
 
+// FreeList represents a free list of set node.
 type FreeList struct {
 	freelist []*node
 }
 
+// NewFreeList creates a new free list.
 func NewFreeList(size int) *FreeList {
 	return &FreeList{freelist: make([]*node, 0, size)}
 }
@@ -100,7 +104,7 @@ func newSkipList(maxLevel int) *SkipList {
 	}
 }
 
-// insert element
+// insert an item into the SkipList.
 func (sl *SkipList) insert(item Item) *node {
 	var update [DefaultMaxLevel]*node // [0...list.maxLevel)
 	var rank [DefaultMaxLevel]int
@@ -240,7 +244,7 @@ type ZSet struct {
 	sl   *SkipList
 }
 
-// New create ZSet
+// New creates a new ZSet.
 func New() *ZSet {
 	return &ZSet{
 		dict: make(map[string]*node),
@@ -258,15 +262,15 @@ func (zs *ZSet) Add(item Item) {
 }
 
 // Delete the element 'ele' from the sorted set,
-// return 1 if the element existed and was deleted, 0 otherwise
-func (zs *ZSet) Delete(key string) int {
+// return true if the element existed and was deleted, false otherwise
+func (zs *ZSet) Delete(key string) bool {
 	node := zs.dict[key]
 	if node == nil {
-		return 0
+		return false
 	}
 	zs.sl.delete(node)
 	delete(zs.dict, key)
-	return 1
+	return true
 }
 
 // Rank return 1-based rank or 0 if not exist
