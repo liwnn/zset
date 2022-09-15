@@ -2,6 +2,7 @@
 This Go package provides an implementation of sorted set in redis.
 
 ## Usage
+All you have to do is to implement a comparison `function Less(Item) bool` for your Item which will be store in the zset, here are some examples.
 ``` go
 package main
 
