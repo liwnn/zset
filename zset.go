@@ -194,6 +194,15 @@ func (sl *skipList) delete(n *node) *node {
 	return nil
 }
 
+func (sl *skipList) updateItem(node *node, item Item) bool {
+	if (node.level[0].forward == nil || item.Less(node.level[0].forward.item)) &&
+		(node.backward == nil || node.backward.item.Less(item)) {
+		node.item = item
+		return true
+	}
+	return false
+}
+
 // GetRank find the rank for an element.
 // Returns 0 when the element cannot be found, rank otherwise.
 // Note that the rank is 1-based
@@ -253,6 +262,11 @@ func New() *ZSet {
 // Add a new element or update the score of an existing element
 func (zs *ZSet) Add(key string, item Item) {
 	if node := zs.dict[key]; node != nil {
+		// if the node after update, would be still exactly at the same position,
+		// we can just update item.
+		if zs.sl.updateItem(node, item) {
+			return
+		}
 		zs.sl.delete(node)
 	}
 	zs.dict[key] = zs.sl.insert(item)
