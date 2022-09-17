@@ -195,8 +195,8 @@ func (sl *skipList) delete(n *node) *node {
 }
 
 func (sl *skipList) updateItem(node *node, item Item) bool {
-	if (node.level[0].forward == nil || item.Less(node.level[0].forward.item)) &&
-		(node.backward == nil || node.backward.item.Less(item)) {
+	if (node.level[0].forward == nil || !node.level[0].forward.item.Less(item)) &&
+		(node.backward == nil || !item.Less(node.backward.item)) {
 		node.item = item
 		return true
 	}
@@ -272,16 +272,17 @@ func (zs *ZSet) Add(key string, item Item) {
 	zs.dict[key] = zs.sl.insert(item)
 }
 
-// Delete the element 'ele' from the sorted set,
+// Remove the element 'ele' from the sorted set,
 // return true if the element existed and was deleted, false otherwise
-func (zs *ZSet) Delete(key string) bool {
+func (zs *ZSet) Remove(key string) (removeItem Item) {
 	node := zs.dict[key]
 	if node == nil {
-		return false
+		return nil
 	}
+	removeItem = node.item
 	zs.sl.delete(node)
 	delete(zs.dict, key)
-	return true
+	return
 }
 
 // Rank return 1-based rank or 0 if not exist
@@ -337,6 +338,14 @@ func (zs *ZSet) Range(start, end int, reverse bool) []Item {
 		}
 	}
 	return ret
+}
+
+// Get return Item in dict.
+func (zs *ZSet) Get(key string) Item {
+	if node, ok := zs.dict[key]; ok {
+		return node.item
+	}
+	return nil
 }
 
 // Length return the element count

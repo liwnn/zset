@@ -42,8 +42,8 @@ func main() {
 		fmt.Printf("%v's rank is %v\n", v.(User).Name, i+1)
 	}
 
-	// Delete
-	tr.Delete("Peek")
+	// Remove
+	tr.Remove("Peek")
 
 	// Rank
 	rank = tr.Rank("Hurst", true)

@@ -8,20 +8,32 @@ import (
 	"time"
 )
 
-func (a Int) Key() string {
-	return strconv.Itoa(int(a))
-}
-
 func init() {
 	seed := time.Now().Unix()
 	rand.Seed(seed)
 }
 
+type TestRank struct {
+	member string
+	score  int
+}
+
+func (a TestRank) Key() string {
+	return a.member
+}
+
+func (a TestRank) Less(than Item) bool {
+	return a.score < than.(TestRank).score
+}
+
 // perm returns a random permutation of n Int items in the range [0, n).
-func perm(n int) (out []Int) {
-	out = make([]Int, 0, n)
+func perm(n int) (out []TestRank) {
+	out = make([]TestRank, 0, n)
 	for _, v := range rand.Perm(n) {
-		out = append(out, Int(v))
+		out = append(out, TestRank{
+			member: strconv.Itoa(v),
+			score:  v,
+		})
 	}
 	return
 }
@@ -29,7 +41,20 @@ func perm(n int) (out []Int) {
 // rang returns an ordered list of Int items in the range [0, n).
 func rang(n int) (out []Item) {
 	for i := 0; i < n; i++ {
-		out = append(out, Int(i))
+		out = append(out, TestRank{
+			member: strconv.Itoa(i),
+			score:  i,
+		})
+	}
+	return
+}
+
+func revrang(n int, count int) (out []Item) {
+	for i := n - 1; i >= n-count; i-- {
+		out = append(out, TestRank{
+			member: strconv.Itoa(i),
+			score:  i,
+		})
 	}
 	return
 }
@@ -42,10 +67,10 @@ func TestZSetRank(t *testing.T) {
 			zs.Add(v.Key(), v)
 		}
 		for _, v := range perm(listSize) {
-			if zs.Rank(v.Key(), false) != int(v)+1 {
+			if zs.Rank(v.Key(), false) != v.score+1 {
 				t.Error("rank error")
 			}
-			if zs.Rank(v.Key(), true) != int(listSize-v) {
+			if zs.Rank(v.Key(), true) != int(listSize-v.score) {
 				t.Error("rank error")
 			}
 		}
@@ -54,15 +79,15 @@ func TestZSetRank(t *testing.T) {
 			t.Error("range error")
 		}
 
-		if r := zs.Range(0, 1, true); r[0] != Int(listSize-1) || r[1] != Int(listSize-2) {
+		if r := zs.Range(0, 1, true); !reflect.DeepEqual(r, revrang(listSize, 2)) {
 			t.Error("range error")
 		}
 
 		for i := 0; i < listSize/2; i++ {
-			zs.Delete(Int(i).Key())
+			zs.Remove(strconv.Itoa(i))
 		}
 		for i := listSize + 1; i < listSize; i++ {
-			if r := zs.Rank(Int(i).Key(), false); r != i-listSize/2 {
+			if r := zs.Rank(strconv.Itoa(i), false); r != i-listSize/2 {
 				t.Error("rank failed")
 			}
 		}
@@ -72,11 +97,106 @@ func TestZSetRank(t *testing.T) {
 const benchmarkListSize = 10000
 
 func BenchmarkAdd(b *testing.B) {
-	zs := New()
-	items := perm(benchmarkListSize)
-	b.ResetTimer()
+	b.StopTimer()
+	insertP := perm(benchmarkListSize)
+	b.StartTimer()
+	i := 0
+	for i < b.N {
+		tr := New()
+		for _, item := range insertP {
+			tr.Add(item.Key(), item)
+			i++
+			if i >= b.N {
+				return
+			}
+		}
+	}
+}
+
+func BenchmarkAddIncrease(b *testing.B) {
+	b.StopTimer()
+	insertP := rang(benchmarkListSize)
+	b.StartTimer()
+	i := 0
+	for i < b.N {
+		tr := New()
+		for _, item := range insertP {
+			tr.Add(item.(TestRank).Key(), item)
+			i++
+			if i >= b.N {
+				return
+			}
+		}
+	}
+}
+
+func BenchmarkAddDecrease(b *testing.B) {
+	b.StopTimer()
+	insertP := revrang(benchmarkListSize, benchmarkListSize)
+	b.StartTimer()
+	i := 0
+	for i < b.N {
+		tr := New()
+		for _, item := range insertP {
+			tr.Add(item.(TestRank).Key(), item)
+			i++
+			if i >= b.N {
+				return
+			}
+		}
+	}
+}
+
+func BenchmarkRemoveAdd(b *testing.B) {
+	b.StopTimer()
+	insertP := perm(benchmarkListSize)
+	tr := New()
+	for _, item := range insertP {
+		tr.Add(item.Key(), item)
+	}
+	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		item := items[i%benchmarkListSize]
-		zs.Add(item.Key(), item)
+		tr.Remove(insertP[i%benchmarkListSize].Key())
+		item := insertP[i%benchmarkListSize]
+		tr.Add(item.Key(), item)
+	}
+}
+
+func BenchmarkRemove(b *testing.B) {
+	b.StopTimer()
+	insertP := perm(benchmarkListSize)
+	removeP := perm(benchmarkListSize)
+	b.StartTimer()
+	i := 0
+	for i < b.N {
+		b.StopTimer()
+		tr := New()
+		for _, v := range insertP {
+			tr.Add(v.Key(), v)
+		}
+		b.StartTimer()
+		for _, item := range removeP {
+			tr.Remove(item.Key())
+			i++
+			if i >= b.N {
+				return
+			}
+		}
+		if tr.Length() > 0 {
+			b.Error(tr.Length())
+		}
+	}
+}
+
+func BenchmarkRank(b *testing.B) {
+	b.StopTimer()
+	insertP := perm(benchmarkListSize)
+	tr := New()
+	for _, v := range insertP {
+		tr.Add(v.Key(), v)
+	}
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		tr.Rank(insertP[i%benchmarkListSize].Key(), true)
 	}
 }
