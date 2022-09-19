@@ -20,6 +20,10 @@ type Item interface {
 	Less(Item) bool
 }
 
+// ItemIterator allows callers of Range* to iterate of the zset.
+// When this function returns false, iteration will stop.
+type ItemIterator func(key string, i Item, rank int) bool
+
 type skipListLevel struct {
 	forward *node
 	span    int
@@ -27,6 +31,7 @@ type skipListLevel struct {
 
 // node is an element of a skip list
 type node struct {
+	key      string
 	item     Item
 	backward *node
 	level    []skipListLevel
@@ -43,12 +48,12 @@ func NewFreeList(size int) *FreeList {
 }
 
 func (f *FreeList) newNode(lvl int) (n *node) {
-	index := len(f.freelist) - 1
-	if index < 0 {
+	if len(f.freelist) == 0 {
 		n = new(node)
 		n.level = make([]skipListLevel, lvl)
 		return
 	}
+	index := len(f.freelist) - 1
 	n = f.freelist[index]
 	f.freelist[index] = nil
 	f.freelist = f.freelist[:index]
@@ -103,7 +108,7 @@ func newSkipList(maxLevel int) *skipList {
 }
 
 // insert an item into the SkipList.
-func (sl *skipList) insert(item Item) *node {
+func (sl *skipList) insert(key string, item Item) *node {
 	var update [DefaultMaxLevel]*node // [0...list.maxLevel)
 	var rank [DefaultMaxLevel]int
 	x := sl.header
@@ -132,6 +137,7 @@ func (sl *skipList) insert(item Item) *node {
 
 	x = sl.freelist.newNode(lvl)
 	x.item = item
+	x.key = key
 	for i := 0; i < lvl; i++ {
 		x.level[i].forward = update[i].level[i].forward
 		update[i].level[i].forward = x
@@ -269,7 +275,7 @@ func (zs *ZSet) Add(key string, item Item) {
 		}
 		zs.sl.delete(node)
 	}
-	zs.dict[key] = zs.sl.insert(item)
+	zs.dict[key] = zs.sl.insert(key, item)
 }
 
 // Remove the element 'ele' from the sorted set,
@@ -300,8 +306,51 @@ func (zs *ZSet) Rank(key string, reverse bool) int {
 	return 0
 }
 
-// Range return elements in [start, end]
-func (zs *ZSet) Range(start, end int, reverse bool) []Item {
+// Range return elements in [start, end].
+func (zs *ZSet) Range(start, end int, reverse bool, iterator ItemIterator) {
+	llen := zs.sl.length
+	if start < 0 {
+		start = llen + start
+	}
+	if end < 0 {
+		end = llen + end
+	}
+	if start < 0 {
+		start = 0
+	}
+	if start > end || start >= llen {
+		return
+	}
+	if end >= llen {
+		end = llen - 1
+	}
+
+	rangeLen := end - start + 1
+	if reverse {
+		ln := zs.sl.getElementByRank(llen - start)
+		for i := 1; i <= rangeLen; i++ {
+			if iterator(ln.key, ln.item, start+i) {
+				ln = ln.backward
+			} else {
+				break
+			}
+		}
+	} else {
+		ln := zs.sl.getElementByRank(start + 1)
+		for i := 1; i <= rangeLen; i++ {
+			if iterator(ln.key, ln.item, start+i) {
+				ln = ln.level[0].forward
+			} else {
+				break
+			}
+		}
+	}
+	return
+}
+
+// RangeIterator return iterator for visit elements in [start, end].
+// It is slower than Range.
+func (zs *ZSet) RangeIterator(start, end int, reverse bool) RangeIterator {
 	llen := zs.sl.length
 	if start < 0 {
 		start = llen + start
@@ -314,30 +363,26 @@ func (zs *ZSet) Range(start, end int, reverse bool) []Item {
 	}
 
 	if start > end || start >= llen {
-		return nil
+		return RangeIterator{end: -1}
 	}
 
 	if end >= llen {
 		end = llen - 1
 	}
 
-	rangeLen := end - start + 1
-
-	var ret = make([]Item, rangeLen)
+	var n *node
 	if reverse {
-		ln := zs.sl.getElementByRank(llen - start)
-		for i := 0; i < rangeLen; i++ {
-			ret[i] = ln.item
-			ln = ln.backward
-		}
+		n = zs.sl.getElementByRank(llen - start)
 	} else {
-		ln := zs.sl.getElementByRank(start + 1)
-		for i := 0; i < rangeLen; i++ {
-			ret[i] = ln.item
-			ln = ln.level[0].forward
-		}
+		n = zs.sl.getElementByRank(start + 1)
 	}
-	return ret
+	return RangeIterator{
+		start:   start,
+		cur:     start,
+		end:     end,
+		node:    n,
+		reverse: reverse,
+	}
 }
 
 // Get return Item in dict.
