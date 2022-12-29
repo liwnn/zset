@@ -166,13 +166,13 @@ func (sl *skipList) insert(key string, item Item) *node {
 }
 
 // delete element
-func (sl *skipList) delete(n *node) *node {
+func (sl *skipList) delete(n *node) Item {
 	var preAlloc [DefaultMaxLevel]*node // [0...list.maxLevel)
 	update := preAlloc[:sl.maxLevel]
 	x := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
-		for x.level[i].forward != nil && x.level[i].forward.item.Less(n.item) {
-			x = x.level[i].forward
+		for y := x.level[i].forward; y != nil && y.item.Less(n.item); y = x.level[i].forward {
+			x = y
 		}
 		update[i] = x
 	}
@@ -194,8 +194,10 @@ func (sl *skipList) delete(n *node) *node {
 		} else {
 			x.level[0].forward.backward = x.backward
 		}
+		removeItem := x.item
+		sl.freelist.freeNode(x)
 		sl.length--
-		return x
+		return removeItem
 	}
 	return nil
 }
@@ -216,9 +218,9 @@ func (sl *skipList) GetRank(item Item) int {
 	var rank int
 	x := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
-		for x.level[i].forward != nil && !item.Less(x.level[i].forward.item) {
+		for y := x.level[i].forward; y != nil && !item.Less(y.item); y = x.level[i].forward {
 			rank += x.level[i].span
-			x = x.level[i].forward
+			x = y
 		}
 		if x.item != nil && !x.item.Less(item) {
 			return rank
@@ -265,17 +267,19 @@ func New() *ZSet {
 	}
 }
 
-// Add a new element or update the score of an existing element
-func (zs *ZSet) Add(key string, item Item) {
+// Add a new element or update the score of an existing element. If an key already
+// exist, the removed item is returned. Otherwise, nil is returned.
+func (zs *ZSet) Add(key string, item Item) (removeItem Item) {
 	if node := zs.dict[key]; node != nil {
 		// if the node after update, would be still exactly at the same position,
 		// we can just update item.
 		if zs.sl.updateItem(node, item) {
 			return
 		}
-		zs.sl.delete(node)
+		removeItem = zs.sl.delete(node)
 	}
 	zs.dict[key] = zs.sl.insert(key, item)
+	return
 }
 
 // Remove the element 'ele' from the sorted set,
@@ -285,8 +289,7 @@ func (zs *ZSet) Remove(key string) (removeItem Item) {
 	if node == nil {
 		return nil
 	}
-	removeItem = node.item
-	zs.sl.delete(node)
+	removeItem = zs.sl.delete(node)
 	delete(zs.dict, key)
 	return
 }
@@ -345,7 +348,6 @@ func (zs *ZSet) Range(start, end int, reverse bool, iterator ItemIterator) {
 			}
 		}
 	}
-	return
 }
 
 // RangeIterator return iterator for visit elements in [start, end].
