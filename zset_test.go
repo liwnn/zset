@@ -85,6 +85,15 @@ func TestZSetRank(t *testing.T) {
 		}
 
 		r = r[:0]
+		zs.RangeByItem(TestRank{score: 0}, TestRank{score: 1}, false, func(key string, item Item, rank int) bool {
+			r = append(r, item)
+			return true
+		})
+		if !reflect.DeepEqual(r, rang(2)) {
+			t.Error("RangeItem error", r, rang(2))
+		}
+
+		r = r[:0]
 		zs.Range(0, 1, true, func(_ string, item Item, _ int) bool {
 			r = append(r, item)
 			return true
@@ -101,6 +110,58 @@ func TestZSetRank(t *testing.T) {
 				t.Error("rank failed")
 			}
 		}
+	}
+}
+
+func TestRangeItem(t *testing.T) {
+	zs := New()
+	zs.RangeByItem(nil, nil, false, func(key string, i Item, rank int) bool {
+		return true
+	})
+
+	for _, i := range perm(10) {
+		zs.Add(i.Key(), i)
+	}
+
+	var r []Item
+	zs.RangeByItem(nil, nil, false, func(key string, i Item, rank int) bool {
+		r = append(r, i)
+		return true
+	})
+	if !reflect.DeepEqual(r, rang(10)) {
+		t.Error("RangeItem error", r, rang(10))
+	}
+
+	r = r[:0]
+	zs.RangeByItem(TestRank{score: 3}, TestRank{score: 5}, false, func(key string, i Item, rank int) bool {
+		r = append(r, i)
+		return true
+	})
+	var expect []Item
+	for i := 3; i <= 5; i++ {
+		expect = append(expect, TestRank{
+			member: strconv.Itoa(i),
+			score:  i,
+		})
+	}
+	if !reflect.DeepEqual(r, expect) {
+		t.Error("RangeItem error", r, expect)
+	}
+
+	r = r[:0]
+	zs.RangeByItem(TestRank{score: 3}, TestRank{score: 5}, true, func(key string, i Item, rank int) bool {
+		r = append(r, i)
+		return true
+	})
+	expect = expect[:0]
+	for i := 5; i >= 3; i-- {
+		expect = append(expect, TestRank{
+			member: strconv.Itoa(i),
+			score:  i,
+		})
+	}
+	if !reflect.DeepEqual(r, expect) {
+		t.Error("RangeItem error", r, expect)
 	}
 }
 
@@ -236,5 +297,21 @@ func BenchmarkRangeIterator(b *testing.B) {
 		it := tr.RangeIterator(0, 100, true)
 		for ; it.Valid(); it.Next() {
 		}
+	}
+}
+
+func BenchmarkRangeItem(b *testing.B) {
+	insertP := perm(benchmarkListSize)
+	tr := New()
+	for _, item := range insertP {
+		tr.Add(item.Key(), item)
+	}
+	begin := TestRank{score: 0}
+	end := TestRank{score: 100}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tr.RangeByItem(begin, end, true, func(key string, i Item, rank int) bool {
+			return true
+		})
 	}
 }

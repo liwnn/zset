@@ -211,10 +211,10 @@ func (sl *skipList) updateItem(node *node, item Item) bool {
 	return false
 }
 
-// GetRank find the rank for an element.
+// getRank find the rank for an element.
 // Returns 0 when the element cannot be found, rank otherwise.
 // Note that the rank is 1-based
-func (sl *skipList) GetRank(item Item) int {
+func (sl *skipList) getRank(item Item) int {
 	var rank int
 	x := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
@@ -238,7 +238,7 @@ func (sl *skipList) randomLevel() int {
 }
 
 // Finds an element by its rank. The rank argument needs to be 1-based.
-func (sl *skipList) getElementByRank(rank int) *node {
+func (sl *skipList) getNodeByRank(rank int) *node {
 	var traversed int
 	x := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
@@ -251,6 +251,40 @@ func (sl *skipList) getElementByRank(rank int) *node {
 		}
 	}
 	return nil
+}
+
+func (sl *skipList) getMinNode() *node {
+	return sl.header.level[0].forward
+}
+
+func (sl *skipList) getMaxNode() *node {
+	return sl.tail
+}
+
+// return the first node greater or equal than param(than) and the node's 1-based rank.
+func (sl *skipList) getNodeGreaterOrEqual(than Item) (*node, int) {
+	x := sl.header
+	var rank int
+	for i := sl.level - 1; i >= 0; i-- {
+		for y := x.level[i].forward; y != nil && y.item.Less(than); y = x.level[i].forward {
+			rank += x.level[i].span
+			x = y
+		}
+	}
+	return x.level[0].forward, rank + x.level[0].span
+}
+
+// return the last node less or equal then param(than) and the node's index.
+func (sl *skipList) getNodeLessOrEqual(than Item) (*node, int) {
+	var rank int
+	x := sl.header
+	for i := sl.level - 1; i >= 0; i-- {
+		for y := x.level[i].forward; y != nil && !than.Less(y.item); y = x.level[i].forward {
+			rank += x.level[i].span
+			x = y
+		}
+	}
+	return x, rank
 }
 
 // ZSet set
@@ -298,7 +332,7 @@ func (zs *ZSet) Remove(key string) (removeItem Item) {
 func (zs *ZSet) Rank(key string, reverse bool) int {
 	node := zs.dict[key]
 	if node != nil {
-		rank := zs.sl.GetRank(node.item)
+		rank := zs.sl.getRank(node.item)
 		if rank > 0 {
 			if reverse {
 				return zs.sl.length - rank + 1
@@ -309,7 +343,58 @@ func (zs *ZSet) Rank(key string, reverse bool) int {
 	return 0
 }
 
-// Range return elements in [start, end].
+// RangeByItem calls the iterator for every value within the range [min, max],
+// until iterator return false. If min is nil, it represent negative infinity.
+// If max is nil, it represent positive infinity.
+func (zs *ZSet) RangeByItem(min, max Item, reverse bool, iterator ItemIterator) {
+	if min != nil && max != nil && max.Less(min) {
+		return
+	}
+	llen := zs.sl.length
+	var minNode, maxNode *node
+	var minRank, maxRank int
+	if min == nil {
+		minNode = zs.sl.getMinNode()
+		minRank = 1
+	} else {
+		minNode, minRank = zs.sl.getNodeGreaterOrEqual(min)
+	}
+	if minNode == nil {
+		return
+	}
+	if max == nil {
+		maxNode = zs.sl.getMaxNode()
+		maxRank = llen
+	} else {
+		maxNode, maxRank = zs.sl.getNodeLessOrEqual(max)
+	}
+	if maxNode == nil {
+		return
+	}
+	if reverse {
+		n := maxNode
+		for i := maxRank; i >= minRank; i-- {
+			if iterator(n.key, n.item, llen-i+1) {
+				n = n.backward
+			} else {
+				break
+			}
+		}
+	} else {
+		n := minNode
+		for i := minRank; i <= maxRank; i++ {
+			if iterator(n.key, n.item, i) {
+				n = n.level[0].forward
+			} else {
+				break
+			}
+		}
+	}
+}
+
+// Range calls the iterator for every value with in index range [start, end],
+// until iterator return false. The <start> and <stop> arguments represent
+// zero-based indexes.
 func (zs *ZSet) Range(start, end int, reverse bool, iterator ItemIterator) {
 	llen := zs.sl.length
 	if start < 0 {
@@ -330,7 +415,7 @@ func (zs *ZSet) Range(start, end int, reverse bool, iterator ItemIterator) {
 
 	rangeLen := end - start + 1
 	if reverse {
-		ln := zs.sl.getElementByRank(llen - start)
+		ln := zs.sl.getNodeByRank(llen - start)
 		for i := 1; i <= rangeLen; i++ {
 			if iterator(ln.key, ln.item, start+i) {
 				ln = ln.backward
@@ -339,7 +424,7 @@ func (zs *ZSet) Range(start, end int, reverse bool, iterator ItemIterator) {
 			}
 		}
 	} else {
-		ln := zs.sl.getElementByRank(start + 1)
+		ln := zs.sl.getNodeByRank(start + 1)
 		for i := 1; i <= rangeLen; i++ {
 			if iterator(ln.key, ln.item, start+i) {
 				ln = ln.level[0].forward
@@ -374,9 +459,9 @@ func (zs *ZSet) RangeIterator(start, end int, reverse bool) RangeIterator {
 
 	var n *node
 	if reverse {
-		n = zs.sl.getElementByRank(llen - start)
+		n = zs.sl.getNodeByRank(llen - start)
 	} else {
-		n = zs.sl.getElementByRank(start + 1)
+		n = zs.sl.getNodeByRank(start + 1)
 	}
 	return RangeIterator{
 		start:   start,
