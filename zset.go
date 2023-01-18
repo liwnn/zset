@@ -3,6 +3,7 @@ package zset
 
 import (
 	"math/rand"
+	"strconv"
 	"time"
 )
 
@@ -17,12 +18,14 @@ var nilNodes = make([]skipListLevel, 16)
 
 // Item represents a single object in the set.
 type Item interface {
+	Key() string
+	// This must provide a strict weak ordering
 	Less(Item) bool
 }
 
 // ItemIterator allows callers of Range* to iterate of the zset.
 // When this function returns false, iteration will stop.
-type ItemIterator func(key string, i Item, rank int) bool
+type ItemIterator func(i Item, rank int) bool
 
 type skipListLevel struct {
 	forward *node
@@ -31,7 +34,6 @@ type skipListLevel struct {
 
 // node is an element of a skip list
 type node struct {
-	key      string
 	item     Item
 	backward *node
 	level    []skipListLevel
@@ -137,7 +139,6 @@ func (sl *skipList) insert(key string, item Item) *node {
 
 	x = sl.freelist.newNode(lvl)
 	x.item = item
-	x.key = key
 	for i := 0; i < lvl; i++ {
 		x.level[i].forward = update[i].level[i].forward
 		update[i].level[i].forward = x
@@ -261,12 +262,12 @@ func (sl *skipList) getMaxNode() *node {
 	return sl.tail
 }
 
-// return the first node greater or equal than param(than) and the node's 1-based rank.
-func (sl *skipList) getNodeGreaterOrEqual(than Item) (*node, int) {
+// return the first node greater and the node's 1-based rank.
+func (sl *skipList) getNodeGreater(cmp func(i Item) bool) (*node, int) {
 	x := sl.header
 	var rank int
 	for i := sl.level - 1; i >= 0; i-- {
-		for y := x.level[i].forward; y != nil && y.item.Less(than); y = x.level[i].forward {
+		for y := x.level[i].forward; y != nil && !cmp(y.item); y = x.level[i].forward {
 			rank += x.level[i].span
 			x = y
 		}
@@ -274,12 +275,12 @@ func (sl *skipList) getNodeGreaterOrEqual(than Item) (*node, int) {
 	return x.level[0].forward, rank + x.level[0].span
 }
 
-// return the last node less or equal then param(than) and the node's index.
-func (sl *skipList) getNodeLessOrEqual(than Item) (*node, int) {
+// return the first node less and the node's 1-based rank.
+func (sl *skipList) getNodeLess(cmp func(i Item) bool) (*node, int) {
 	var rank int
 	x := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
-		for y := x.level[i].forward; y != nil && !than.Less(y.item); y = x.level[i].forward {
+		for y := x.level[i].forward; y != nil && cmp(y.item); y = x.level[i].forward {
 			rank += x.level[i].span
 			x = y
 		}
@@ -301,9 +302,10 @@ func New() *ZSet {
 	}
 }
 
-// Add a new element or update the score of an existing element. If an key already
+// Add a new element or update the score of an existing element. If an item already
 // exist, the removed item is returned. Otherwise, nil is returned.
-func (zs *ZSet) Add(key string, item Item) (removeItem Item) {
+func (zs *ZSet) Add(item Item) (removeItem Item) {
+	key := item.Key()
 	if node := zs.dict[key]; node != nil {
 		// if the node after update, would be still exactly at the same position,
 		// we can just update item.
@@ -346,10 +348,7 @@ func (zs *ZSet) Rank(key string, reverse bool) int {
 // RangeByItem calls the iterator for every value within the range [min, max],
 // until iterator return false. If min is nil, it represent negative infinity.
 // If max is nil, it represent positive infinity.
-func (zs *ZSet) RangeByItem(min, max Item, reverse bool, iterator ItemIterator) {
-	if min != nil && max != nil && max.Less(min) {
-		return
-	}
+func (zs *ZSet) RangeByScore(min, max func(i Item) bool, reverse bool, iterator ItemIterator) {
 	llen := zs.sl.length
 	var minNode, maxNode *node
 	var minRank, maxRank int
@@ -357,7 +356,7 @@ func (zs *ZSet) RangeByItem(min, max Item, reverse bool, iterator ItemIterator) 
 		minNode = zs.sl.getMinNode()
 		minRank = 1
 	} else {
-		minNode, minRank = zs.sl.getNodeGreaterOrEqual(min)
+		minNode, minRank = zs.sl.getNodeGreater(min)
 	}
 	if minNode == nil {
 		return
@@ -366,7 +365,7 @@ func (zs *ZSet) RangeByItem(min, max Item, reverse bool, iterator ItemIterator) 
 		maxNode = zs.sl.getMaxNode()
 		maxRank = llen
 	} else {
-		maxNode, maxRank = zs.sl.getNodeLessOrEqual(max)
+		maxNode, maxRank = zs.sl.getNodeLess(max)
 	}
 	if maxNode == nil {
 		return
@@ -374,7 +373,7 @@ func (zs *ZSet) RangeByItem(min, max Item, reverse bool, iterator ItemIterator) 
 	if reverse {
 		n := maxNode
 		for i := maxRank; i >= minRank; i-- {
-			if iterator(n.key, n.item, llen-i+1) {
+			if iterator(n.item, llen-i+1) {
 				n = n.backward
 			} else {
 				break
@@ -383,7 +382,7 @@ func (zs *ZSet) RangeByItem(min, max Item, reverse bool, iterator ItemIterator) 
 	} else {
 		n := minNode
 		for i := minRank; i <= maxRank; i++ {
-			if iterator(n.key, n.item, i) {
+			if iterator(n.item, i) {
 				n = n.level[0].forward
 			} else {
 				break
@@ -417,7 +416,7 @@ func (zs *ZSet) Range(start, end int, reverse bool, iterator ItemIterator) {
 	if reverse {
 		ln := zs.sl.getNodeByRank(llen - start)
 		for i := 1; i <= rangeLen; i++ {
-			if iterator(ln.key, ln.item, start+i) {
+			if iterator(ln.item, start+i) {
 				ln = ln.backward
 			} else {
 				break
@@ -426,7 +425,7 @@ func (zs *ZSet) Range(start, end int, reverse bool, iterator ItemIterator) {
 	} else {
 		ln := zs.sl.getNodeByRank(start + 1)
 		for i := 1; i <= rangeLen; i++ {
-			if iterator(ln.key, ln.item, start+i) {
+			if iterator(ln.item, start+i) {
 				ln = ln.level[0].forward
 			} else {
 				break
@@ -486,6 +485,10 @@ func (zs *ZSet) Length() int {
 }
 
 type Int int
+
+func (a Int) Key() string {
+	return strconv.Itoa(int(a))
+}
 
 func (a Int) Less(b Item) bool {
 	return a < b.(Int)

@@ -27,10 +27,6 @@ func (r *RangeIterator) Item() Item {
 	return r.node.item
 }
 
-func (r *RangeIterator) Key() string {
-	return r.node.key
-}
-
 func (r *RangeIterator) Rank() int {
 	return r.cur + 1
 }
