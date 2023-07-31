@@ -1,5 +1,4 @@
-//go:build !go1.18
-// +build !go1.18
+//go:build go1.18
 
 package zset
 
@@ -13,14 +12,6 @@ import (
 type TestRank struct {
 	member string
 	score  int
-}
-
-func (a TestRank) Key() string {
-	return a.member
-}
-
-func (a TestRank) Less(than Item) bool {
-	return a.score < than.(TestRank).score
 }
 
 // perm returns a random permutation of n Int items in the range [0, n).
@@ -58,22 +49,24 @@ func revrang(n int, count int) (out []TestRank) {
 
 func TestZSetRank(t *testing.T) {
 	const listSize = 10000
-	zs := New()
+	zs := New[string, TestRank](func(a, b TestRank) bool {
+		return a.score < b.score
+	})
 	for i := 0; i < 10; i++ {
 		for _, v := range perm(listSize) {
 			zs.Add(v.member, v)
 		}
 		for _, v := range perm(listSize) {
-			if zs.Rank(v.Key(), false) != v.score+1 {
+			if zs.Rank(v.member, false) != v.score+1 {
 				t.Error("rank error")
 			}
-			if zs.Rank(v.Key(), true) != listSize-v.score {
+			if zs.Rank(v.member, true) != listSize-v.score {
 				t.Error("rank error")
 			}
 		}
 
-		var r []Item
-		zs.Range(0, 1, false, func(item Item, _ int) bool {
+		var r []TestRank
+		zs.Range(0, 1, false, func(item TestRank, _ int) bool {
 			r = append(r, item)
 			return true
 		})
@@ -82,11 +75,11 @@ func TestZSetRank(t *testing.T) {
 		}
 
 		r = r[:0]
-		zs.RangeByScore(func(i Item) bool {
-			return i.(TestRank).score >= 0
-		}, func(i Item) bool {
-			return i.(TestRank).score <= 1
-		}, false, func(item Item, rank int) bool {
+		zs.RangeByScore(func(i TestRank) bool {
+			return i.score >= 0
+		}, func(i TestRank) bool {
+			return i.score <= 1
+		}, false, func(item TestRank, rank int) bool {
 			r = append(r, item)
 			return true
 		})
@@ -95,7 +88,7 @@ func TestZSetRank(t *testing.T) {
 		}
 
 		r = r[:0]
-		zs.Range(0, 1, true, func(item Item, _ int) bool {
+		zs.Range(0, 1, true, func(item TestRank, _ int) bool {
 			r = append(r, item)
 			return true
 		})
@@ -115,8 +108,10 @@ func TestZSetRank(t *testing.T) {
 }
 
 func TestRangeItem(t *testing.T) {
-	zs := New()
-	zs.RangeByScore(nil, nil, false, func(i Item, rank int) bool {
+	zs := New[string, TestRank](func(a, b TestRank) bool {
+		return a.score < b.score
+	})
+	zs.RangeByScore(nil, nil, false, func(i TestRank, rank int) bool {
 		return true
 	})
 
@@ -124,8 +119,8 @@ func TestRangeItem(t *testing.T) {
 		zs.Add(i.member, i)
 	}
 
-	var r []Item
-	zs.RangeByScore(nil, nil, false, func(i Item, rank int) bool {
+	var r []TestRank
+	zs.RangeByScore(nil, nil, false, func(i TestRank, rank int) bool {
 		r = append(r, i)
 		return true
 	})
@@ -134,15 +129,15 @@ func TestRangeItem(t *testing.T) {
 	}
 
 	r = r[:0]
-	zs.RangeByScore(func(i Item) bool {
-		return i.(TestRank).score >= 3
-	}, func(i Item) bool {
-		return i.(TestRank).score <= 5
-	}, false, func(i Item, rank int) bool {
+	zs.RangeByScore(func(i TestRank) bool {
+		return i.score >= 3
+	}, func(i TestRank) bool {
+		return i.score <= 5
+	}, false, func(i TestRank, rank int) bool {
 		r = append(r, i)
 		return true
 	})
-	var expect []Item
+	var expect []TestRank
 	for i := 3; i <= 5; i++ {
 		expect = append(expect, TestRank{
 			member: strconv.Itoa(i),
@@ -154,11 +149,11 @@ func TestRangeItem(t *testing.T) {
 	}
 
 	r = r[:0]
-	zs.RangeByScore(func(i Item) bool {
-		return i.(TestRank).score >= 3
-	}, func(i Item) bool {
-		return i.(TestRank).score <= 5
-	}, true, func(i Item, rank int) bool {
+	zs.RangeByScore(func(i TestRank) bool {
+		return i.score >= 3
+	}, func(i TestRank) bool {
+		return i.score <= 5
+	}, true, func(i TestRank, rank int) bool {
 		r = append(r, i)
 		return true
 	})
@@ -182,7 +177,9 @@ func BenchmarkAdd(b *testing.B) {
 	b.StartTimer()
 	i := 0
 	for i < b.N {
-		tr := New()
+		tr := New[string, TestRank](func(a, b TestRank) bool {
+			return a.score < b.score
+		})
 		for _, item := range insertP {
 			tr.Add(item.member, item)
 			i++
@@ -199,9 +196,11 @@ func BenchmarkAddIncrease(b *testing.B) {
 	b.StartTimer()
 	i := 0
 	for i < b.N {
-		tr := New()
+		tr := New[string, TestRank](func(a, b TestRank) bool {
+			return a.score < b.score
+		})
 		for _, item := range insertP {
-			tr.Add(item.Key(), item)
+			tr.Add(item.member, item)
 			i++
 			if i >= b.N {
 				return
@@ -216,7 +215,9 @@ func BenchmarkAddDecrease(b *testing.B) {
 	b.StartTimer()
 	i := 0
 	for i < b.N {
-		tr := New()
+		tr := New[string, TestRank](func(a, b TestRank) bool {
+			return a.score < b.score
+		})
 		for _, item := range insertP {
 			tr.Add(item.member, item)
 			i++
@@ -230,13 +231,15 @@ func BenchmarkAddDecrease(b *testing.B) {
 func BenchmarkRemoveAdd(b *testing.B) {
 	b.StopTimer()
 	insertP := perm(benchmarkListSize)
-	tr := New()
+	tr := New[string, TestRank](func(a, b TestRank) bool {
+		return a.score < b.score
+	})
 	for _, item := range insertP {
 		tr.Add(item.member, item)
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		tr.Remove(insertP[i%benchmarkListSize].Key())
+		tr.Remove(insertP[i%benchmarkListSize].member)
 		item := insertP[i%benchmarkListSize]
 		tr.Add(item.member, item)
 	}
@@ -250,13 +253,15 @@ func BenchmarkRemove(b *testing.B) {
 	i := 0
 	for i < b.N {
 		b.StopTimer()
-		tr := New()
-		for _, v := range insertP {
-			tr.Add(v.member, v)
+		tr := New[string, TestRank](func(a, b TestRank) bool {
+			return a.score < b.score
+		})
+		for _, item := range insertP {
+			tr.Add(item.member, item)
 		}
 		b.StartTimer()
 		for _, item := range removeP {
-			tr.Remove(item.Key())
+			tr.Remove(item.member)
 			i++
 			if i >= b.N {
 				return
@@ -271,25 +276,29 @@ func BenchmarkRemove(b *testing.B) {
 func BenchmarkRank(b *testing.B) {
 	b.StopTimer()
 	insertP := perm(benchmarkListSize)
-	tr := New()
-	for _, v := range insertP {
-		tr.Add(v.member, v)
+	tr := New[string, TestRank](func(a, b TestRank) bool {
+		return a.score < b.score
+	})
+	for _, item := range insertP {
+		tr.Add(item.member, item)
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		tr.Rank(insertP[i%benchmarkListSize].Key(), true)
+		tr.Rank(insertP[i%benchmarkListSize].member, true)
 	}
 }
 
 func BenchmarkRange(b *testing.B) {
 	insertP := perm(benchmarkListSize)
-	tr := New()
+	tr := New[string, TestRank](func(a, b TestRank) bool {
+		return a.score < b.score
+	})
 	for _, item := range insertP {
 		tr.Add(item.member, item)
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tr.Range(0, 100, true, func(i Item, rank int) bool {
+		tr.Range(0, 100, true, func(i TestRank, rank int) bool {
 			return true
 		})
 	}
@@ -297,7 +306,9 @@ func BenchmarkRange(b *testing.B) {
 
 func BenchmarkRangeIterator(b *testing.B) {
 	insertP := perm(benchmarkListSize)
-	tr := New()
+	tr := New[string, TestRank](func(a, b TestRank) bool {
+		return a.score < b.score
+	})
 	for _, item := range insertP {
 		tr.Add(item.member, item)
 	}
@@ -311,18 +322,20 @@ func BenchmarkRangeIterator(b *testing.B) {
 
 func BenchmarkRangeItem(b *testing.B) {
 	insertP := perm(benchmarkListSize)
-	tr := New()
+	tr := New[string, TestRank](func(a, b TestRank) bool {
+		return a.score < b.score
+	})
 	for _, item := range insertP {
 		tr.Add(item.member, item)
 	}
 	minScore, maxScore := 0, 100
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tr.RangeByScore(func(i Item) bool {
-			return i.(TestRank).score >= minScore
-		}, func(i Item) bool {
-			return i.(TestRank).score <= maxScore
-		}, true, func(i Item, rank int) bool {
+		tr.RangeByScore(func(i TestRank) bool {
+			return i.score >= minScore
+		}, func(i TestRank) bool {
+			return i.score <= maxScore
+		}, true, func(i TestRank, rank int) bool {
 			return true
 		})
 	}

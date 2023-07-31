@@ -1,7 +1,7 @@
 # ZSet
 This Go package provides an implementation of sorted set in redis.
 
-## Usage
+## Usage (go < 1.18)
 All you have to do is to implement a comparison `function Less(Item) bool` and a `function Key() string` for your Item which will be store in the zset, here are some examples.
 ``` go
 package main
@@ -32,9 +32,9 @@ func main() {
 	zs := zset.New()
 
 	// Add
-	zs.Add(User{Name: "Hurst", Score: 88})
-	zs.Add(User{Name: "Peek", Score: 100})
-	zs.Add(User{Name: "Beaty", Score: 66})
+	zs.Add("Hurst", User{Name: "Hurst", Score: 88})
+	zs.Add("Peek", User{Name: "Peek", Score: 100})
+	zs.Add("Beaty", User{Name: "Beaty", Score: 66})
 
 	// Rank
 	rank := zs.Rank("Hurst", true)
@@ -44,7 +44,7 @@ func main() {
 	fmt.Println()
 	fmt.Println("Range[0,3]:")
 	zs.Range(0, 3, true, func(v zset.Item, rank int) bool {
-		fmt.Printf("%v's rank is %v\n", v.Key(), rank)
+		fmt.Printf("%v's rank is %v\n", v.(User).Key(), rank)
 		return true
 	})
 
@@ -52,7 +52,7 @@ func main() {
 	fmt.Println()
 	fmt.Println("Range[0,3] with Iterator:")
 	for it := zs.RangeIterator(0, 3, true); it.Valid(); it.Next() {
-		fmt.Printf("Ite: %v's rank is %v\n", it.Item().Key(), it.Rank())
+		fmt.Printf("Ite: %v's rank is %v\n", it.Item().(User).Key(), it.Rank())
 	}
 
 	// Range by score [88, 100]
@@ -63,7 +63,7 @@ func main() {
 	}, func(i zset.Item) bool {
 		return i.(User).Score <= 100
 	}, true, func(i zset.Item, rank int) bool {
-		fmt.Printf("%v's score[%v] rank is %v\n", i.Key(), i.(User).Score, rank)
+		fmt.Printf("%v's score[%v] rank is %v\n", i.(User).Key(), i.(User).Score, rank)
 		return true
 	})
 
@@ -97,4 +97,81 @@ Hurst's score[88] rank is 2
 
 After remove Peek:
 Hurst's rank is 1
+```
+## Usage (go >= 1.18)
+``` go
+package main
+
+import (
+	"fmt"
+
+	"github.com/liwnn/zset"
+)
+
+type User struct {
+	Name  string
+	Score int
+}
+
+func (u User) Key() string {
+	return u.Name
+}
+
+func (u User) Less(than User) bool {
+	if u.Score == than.Score {
+		return u.Name < than.Name
+	}
+	return u.Score < than.Score
+}
+
+func main() {
+	zs := zset.New[string, User](func(a, b User) bool {
+		return a.Less(b)
+	})
+
+	// Add
+	zs.Add("Hurst", User{Name: "Hurst", Score: 88})
+	zs.Add("Peek", User{Name: "Peek", Score: 100})
+	zs.Add("Beaty", User{Name: "Beaty", Score: 66})
+
+	// Rank
+	rank := zs.Rank("Hurst", true)
+	fmt.Printf("Hurst's rank is %v\n", rank) // expected 2
+
+	// Range
+	fmt.Println()
+	fmt.Println("Range[0,3]:")
+	zs.Range(0, 3, true, func(v User, rank int) bool {
+		fmt.Printf("%v's rank is %v\n", v.Key(), rank)
+		return true
+	})
+
+	// Range with Iterator
+	fmt.Println()
+	fmt.Println("Range[0,3] with Iterator:")
+	for it := zs.RangeIterator(0, 3, true); it.Valid(); it.Next() {
+		fmt.Printf("Ite: %v's rank is %v\n", it.Item().Key(), it.Rank())
+	}
+
+	// Range by score [88, 100]
+	fmt.Println()
+	fmt.Println("RangeByScore[88,100]:")
+	zs.RangeByScore(func(i User) bool {
+		return i.Score >= 88
+	}, func(i User) bool {
+		return i.Score <= 100
+	}, true, func(i User, rank int) bool {
+		fmt.Printf("%v's score[%v] rank is %v\n", i.Key(), i.Score, rank)
+		return true
+	})
+
+	// Remove
+	zs.Remove("Peek")
+
+	// Rank
+	fmt.Println()
+	fmt.Println("After remove Peek:")
+	rank = zs.Rank("Hurst", true)
+	fmt.Printf("Hurst's rank is %v\n", rank) // expected 1
+}
 ```
