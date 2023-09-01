@@ -262,11 +262,11 @@ func (sl *skipList) getMaxNode() *node {
 }
 
 // return the first node greater and the node's 1-based rank.
-func (sl *skipList) getNodeGreater(cmp func(i Item) bool) (*node, int) {
+func (sl *skipList) findNext(greater func(i Item) bool) (*node, int) {
 	x := sl.header
 	var rank int
 	for i := sl.level - 1; i >= 0; i-- {
-		for y := x.level[i].forward; y != nil && !cmp(y.item); y = x.level[i].forward {
+		for y := x.level[i].forward; y != nil && !greater(y.item); y = x.level[i].forward {
 			rank += x.level[i].span
 			x = y
 		}
@@ -275,11 +275,11 @@ func (sl *skipList) getNodeGreater(cmp func(i Item) bool) (*node, int) {
 }
 
 // return the first node less and the node's 1-based rank.
-func (sl *skipList) getNodeLess(cmp func(i Item) bool) (*node, int) {
+func (sl *skipList) findPrev(less func(i Item) bool) (*node, int) {
 	var rank int
 	x := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
-		for y := x.level[i].forward; y != nil && cmp(y.item); y = x.level[i].forward {
+		for y := x.level[i].forward; y != nil && less(y.item); y = x.level[i].forward {
 			rank += x.level[i].span
 			x = y
 		}
@@ -343,6 +343,22 @@ func (zs *ZSet) Rank(key string, reverse bool) int {
 	return 0
 }
 
+func (zs *ZSet) FindNext(iGreaterThan func(i Item) bool) (v Item, rank int) {
+	n, rank := zs.sl.findNext(iGreaterThan)
+	if n == nil {
+		return
+	}
+	return n.item, rank
+}
+
+func (zs *ZSet) FindPrev(iLessThan func(i Item) bool) (v Item, rank int) {
+	n, rank := zs.sl.findPrev(iLessThan)
+	if n == nil {
+		return
+	}
+	return n.item, rank
+}
+
 // RangeByScore calls the iterator for every value within the range [min, max],
 // until iterator return false. If min is nil, it represents negative infinity.
 // If max is nil, it represents positive infinity.
@@ -354,7 +370,7 @@ func (zs *ZSet) RangeByScore(min, max func(i Item) bool, reverse bool, iterator 
 		minNode = zs.sl.getMinNode()
 		minRank = 1
 	} else {
-		minNode, minRank = zs.sl.getNodeGreater(min)
+		minNode, minRank = zs.sl.findNext(min)
 	}
 	if minNode == nil {
 		return
@@ -363,7 +379,7 @@ func (zs *ZSet) RangeByScore(min, max func(i Item) bool, reverse bool, iterator 
 		maxNode = zs.sl.getMaxNode()
 		maxRank = llen
 	} else {
-		maxNode, maxRank = zs.sl.getNodeLess(max)
+		maxNode, maxRank = zs.sl.findPrev(max)
 	}
 	if maxNode == nil {
 		return
